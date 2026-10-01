@@ -1,0 +1,15 @@
+name: Daily Pancake Harvest
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Se ejecuta todos los días a la medianoche (UTC)
+  workflow_dispatch: # Te permite ejecutarlo manualmente desde el móvil cuando quieras
+
+jobs:
+  call-harvest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Supabase Edge Function
+        run: |
+          curl -X POST "https://ceirhkdpuzobndgmyrmc.supabase.co/functions/v1/harvest-pancake" \
+          -H "Content-Type: application/json"
