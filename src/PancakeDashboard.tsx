@@ -23,6 +23,9 @@ export const PancakeDashboard: React.FC = () => {
   const rangeUrl = 'https://ceirhkdpuzobndgmyrmc.supabase.co/functions/v1/positionrange';
   const rebalanceUrl = 'https://ceirhkdpuzobndgmyrmc.supabase.co/functions/v1/rebalance-position';
 
+  // 🔑 Llave de seguridad recuperada desde tus variables de entorno de Cloudflare Pages
+  const appSecret = import.meta.env.VITE_APP_SECRET || '';
+
   useEffect(() => {
     checkPositionRange();
   }, []);
@@ -35,7 +38,13 @@ export const PancakeDashboard: React.FC = () => {
         ? `${rangeUrl}?positionId=${currentSavedId}` 
         : rangeUrl;
 
-      const res = await fetch(queryUrl);
+      const res = await fetch(queryUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${appSecret}` // 👈 Agregado aquí
+        }
+      });
       const data = await res.json();
       if (data.success) {
         if (data.positionId) {
@@ -62,7 +71,10 @@ export const PancakeDashboard: React.FC = () => {
     try {
       const res = await fetch(harvestUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${appSecret}` // 👈 Agregado aquí
+        },
         body: JSON.stringify({ positionId: positionId !== 'Detectando...' ? Number(positionId) : undefined })
       });
       const data = await res.json();
@@ -90,7 +102,10 @@ export const PancakeDashboard: React.FC = () => {
     try {
       const res = await fetch(rebalanceUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${appSecret}` // 👈 Agregado aquí
+        },
         body: JSON.stringify({ percentage: Number(percentage) })
       });
       const data = await res.json();
