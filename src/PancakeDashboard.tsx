@@ -30,7 +30,12 @@ export const PancakeDashboard: React.FC = () => {
   const checkPositionRange = async () => {
     setLoadingRange(true);
     try {
-      const res = await fetch(rangeUrl);
+      const currentSavedId = localStorage.getItem('activePositionId');
+      const queryUrl = currentSavedId && currentSavedId !== 'Detectando...' 
+        ? `${rangeUrl}?positionId=${currentSavedId}` 
+        : rangeUrl;
+
+      const res = await fetch(queryUrl);
       const data = await res.json();
       if (data.success) {
         if (data.positionId) {
@@ -57,7 +62,8 @@ export const PancakeDashboard: React.FC = () => {
     try {
       const res = await fetch(harvestUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ positionId: positionId !== 'Detectando...' ? Number(positionId) : undefined })
       });
       const data = await res.json();
       if (data.success) {
@@ -107,7 +113,7 @@ export const PancakeDashboard: React.FC = () => {
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '400px', margin: 'auto', background: '#0f172a', color: '#fff', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
       <h2>PancakeSwap V3 Harvester</h2>
-      <p style={{ color: '#94a3b8', fontSize: '14px' }}>Posición ID: #{positionId} (PEPE/BNB)</p>
+      <p style={{ color: '#94a3b8', fontSize: '14px' }}>Posición ID: #{positionId} (PEPE/WBNB)</p>
 
       <div style={{ background: '#1e293b', padding: '12px', borderRadius: '8px', margin: '15px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: '13px', color: '#cbd5e1' }}>Estado de la Posición:</span>
