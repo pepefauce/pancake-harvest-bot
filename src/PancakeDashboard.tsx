@@ -5,6 +5,12 @@ export const PancakeDashboard: React.FC = () => {
   const [loadingRange, setLoadingRange] = useState(true);
   const [loadingRebalance, setLoadingRebalance] = useState(false);
   
+  // Estado dinámico del ID del NFT (recupera de localStorage o usa el viejo por defecto)
+  const [positionId, setPositionId] = useState<number>(() => {
+    const saved = localStorage.getItem('activePositionId');
+    return saved ? Number(saved) : 7594104;
+  });
+  
   const [rangeData, setRangeData] = useState<{
     isInRange: boolean;
     currentTick: string;
@@ -21,13 +27,13 @@ export const PancakeDashboard: React.FC = () => {
   const rebalanceUrl = 'https://ceirhkdpuzobndgmyrmc.supabase.co/functions/v1/rebalance-position';
 
   useEffect(() => {
-    checkPositionRange();
-  }, []);
+    checkPositionRange(positionId);
+  }, [positionId]);
 
-  const checkPositionRange = async () => {
+  const checkPositionRange = async (idToCheck = positionId) => {
     setLoadingRange(true);
     try {
-      const res = await fetch(rangeUrl);
+      const res = await fetch(`${rangeUrl}?positionId=${idToCheck}`);
       const data = await res.json();
       if (data.success) {
         setRangeData({
@@ -50,7 +56,8 @@ export const PancakeDashboard: React.FC = () => {
     try {
       const res = await fetch(harvestUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ positionId })
       });
       const data = await res.json();
       if (data.success) {
@@ -77,12 +84,20 @@ export const PancakeDashboard: React.FC = () => {
       const res = await fetch(rebalanceUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ percentage: Number(percentage) })
+        body: JSON.stringify({ positionId, percentage: Number(percentage) })
       });
       const data = await res.json();
       if (data.success) {
-        setMsg('¡Rebalanceo exitoso! ' + data.message);
-        checkPositionRange(); // Actualizar el estado visual del rango
+        if (data.newTokenId) {
+          const newId = Number(data.newTokenId);
+          setPositionId(newId);
+          localStorage.setItem('activePositionId', newId.toString());
+          setMsg(`¡Rebalanceo exitoso! Nuevo NFT ID: #${newId}`);
+          checkPositionRange(newId); // Verificar el rango del nuevo token inmediatamente
+        } else {
+          setMsg('¡Rebalanceo exitoso! ' + data.message);
+          checkPositionRange(positionId);
+        }
       } else {
         setMsg('Error al rebalancear: ' + data.error);
       }
@@ -96,7 +111,7 @@ export const PancakeDashboard: React.FC = () => {
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '400px', margin: 'auto', background: '#0f172a', color: '#fff', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
       <h2>PancakeSwap V3 Harvester</h2>
-      <p style={{ color: '#94a3b8', fontSize: '14px' }}>Posición ID: #7594104 (PEPE/BNB)</p>
+      <p style={{ color: '#94a3b8', fontSize: '14px' }}>Posición ID: #{positionId} (PEPE/BNB)</p>
 
       {/* Indicador de Estado En Rango / Fuera de Rango */}
       <div style={{ background: '#1e293b', padding: '12px', borderRadius: '8px', margin: '15px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
