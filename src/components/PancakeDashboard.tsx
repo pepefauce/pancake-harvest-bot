@@ -6,14 +6,23 @@ export const PancakeDashboard: React.FC = () => {
 
   const handleHarvest = async () => {
     setLoading(true);
+    setMsg(null);
     try {
-      const res = await fetch('https://TU_PROYECTO.supabase.co/functions/v1/harvest-pancake', {
+      // Usando tu URL real de Supabase (o la variable de entorno)
+      const apiUrl = import.meta.env.VITE_HARVEST_API_URL || 'https://ceirhkdpuzobndgmyrmc.supabase.co/functions/v1/harvest-pancake';
+      
+      const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
       const data = await res.json();
+      
       if (data.success) {
-        setMsg('¡Reclamo exitoso! Tx: ' + data.txHash);
+        if (data.txHash) {
+          setMsg('¡Reclamo exitoso! Tx: ' + data.txHash);
+        } else {
+          setMsg(data.message || 'Proceso completado sin transacciones pendientes.');
+        }
       } else {
         setMsg('Error: ' + data.error);
       }
@@ -31,7 +40,7 @@ export const PancakeDashboard: React.FC = () => {
       <button 
         onClick={handleHarvest} 
         disabled={loading}
-        style={{ width: '100%', padding: '12px', background: '#f97316', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', marginTop: '10px' }}
+        style={{ width: '100%', padding: '12px', background: '#f97316', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', marginTop: '10px', cursor: 'pointer' }}
       >
         {loading ? 'Reclamando...' : 'Reclamar Ganancias Ahora'}
       </button>
