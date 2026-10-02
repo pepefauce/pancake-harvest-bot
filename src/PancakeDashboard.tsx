@@ -11,9 +11,9 @@ export const PancakeDashboard: React.FC = () => {
   
   const [rangeData, setRangeData] = useState<{
     isInRange: boolean;
-    currentTick: string;
-    tickLower: string;
-    tickUpper: string;
+    feesUSD: string;
+    tokensOwed0: string;
+    tokensOwed1: string;
   } | null>(null);
 
   const [percentage, setPercentage] = useState('15');
@@ -44,9 +44,9 @@ export const PancakeDashboard: React.FC = () => {
         }
         setRangeData({
           isInRange: data.isInRange,
-          currentTick: data.currentTick,
-          tickLower: data.tickLower,
-          tickUpper: data.tickUpper,
+          feesUSD: data.feesUSD || '0.00',
+          tokensOwed0: data.tokensOwed0 || '0',
+          tokensOwed1: data.tokensOwed1 || '0',
         });
       }
     } catch (e) {
@@ -68,6 +68,7 @@ export const PancakeDashboard: React.FC = () => {
       const data = await res.json();
       if (data.success) {
         setMsg(data.txHash ? '¡Reclamo exitoso! Tx: ' + data.txHash : 'Proceso completado sin transacciones pendientes.');
+        checkPositionRange(); // Actualizar ganancias tras reclamar
       } else {
         setMsg('Error: ' + data.error);
       }
@@ -115,6 +116,7 @@ export const PancakeDashboard: React.FC = () => {
       <h2>PancakeSwap V3 Harvester</h2>
       <p style={{ color: '#94a3b8', fontSize: '14px' }}>Posición ID: #{positionId} (PEPE/WBNB)</p>
 
+      {/* Estado de la Posición */}
       <div style={{ background: '#1e293b', padding: '12px', borderRadius: '8px', margin: '15px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: '13px', color: '#cbd5e1' }}>Estado de la Posición:</span>
         {loadingRange ? (
@@ -124,6 +126,21 @@ export const PancakeDashboard: React.FC = () => {
         ) : (
           <span style={{ background: '#7f1d1d', color: '#fca5a5', padding: '4px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold' }}>🔴 Fuera de Rango</span>
         )}
+      </div>
+
+      {/* Ganancias Pendientes en USD */}
+      <div style={{ background: '#1e293b', padding: '15px', borderRadius: '8px', marginBottom: '15px', border: '1px solid #334155' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: '13px', color: '#94a3b8' }}>Ganancias Acumuladas:</span>
+          {loadingRange ? (
+            <span style={{ fontSize: '13px', color: '#f97316' }}>Calculando...</span>
+          ) : (
+            <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#34d399' }}>${rangeData?.feesUSD || '0.00'} USD</span>
+          )}
+        </div>
+        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', textAlign: 'right' }}>
+          PEPE: {rangeData?.tokensOwed0 || '0'} | WBNB: {rangeData?.tokensOwed1 || '0'}
+        </div>
       </div>
 
       <button 
