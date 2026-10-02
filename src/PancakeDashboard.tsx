@@ -5,10 +5,8 @@ export const PancakeDashboard: React.FC = () => {
   const [loadingRange, setLoadingRange] = useState(true);
   const [loadingRebalance, setLoadingRebalance] = useState(false);
   
-  // Estado dinámico del ID del NFT (recupera de localStorage o usa el viejo por defecto)
-  const [positionId, setPositionId] = useState<number>(() => {
-    const saved = localStorage.getItem('activePositionId');
-    return saved ? Number(saved) : 7594104;
+  const [positionId, setPositionId] = useState<string | number>(() => {
+    return localStorage.getItem('activePositionId') || 'Detectando...';
   });
   
   const [rangeData, setRangeData] = useState<{
@@ -18,7 +16,6 @@ export const PancakeDashboard: React.FC = () => {
     tickUpper: string;
   } | null>(null);
 
-  // Estado para el margen porcentual (por defecto 15%)
   const [percentage, setPercentage] = useState('15');
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -27,15 +24,19 @@ export const PancakeDashboard: React.FC = () => {
   const rebalanceUrl = 'https://ceirhkdpuzobndgmyrmc.supabase.co/functions/v1/rebalance-position';
 
   useEffect(() => {
-    checkPositionRange(positionId);
-  }, [positionId]);
+    checkPositionRange();
+  }, []);
 
-  const checkPositionRange = async (idToCheck = positionId) => {
+  const checkPositionRange = async () => {
     setLoadingRange(true);
     try {
-      const res = await fetch(`${rangeUrl}?positionId=${idToCheck}`);
+      const res = await fetch(rangeUrl);
       const data = await res.json();
       if (data.success) {
+        if (data.positionId) {
+          setPositionId(data.positionId);
+          localStorage.setItem('activePositionId', data.positionId.toString());
+        }
         setRangeData({
           isInRange: data.isInRange,
           currentTick: data.currentTick,
@@ -56,8 +57,7 @@ export const PancakeDashboard: React.FC = () => {
     try {
       const res = await fetch(harvestUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ positionId })
+        headers: { 'Content-Type': 'application/json' }
       });
       const data = await res.json();
       if (data.success) {
@@ -84,20 +84,16 @@ export const PancakeDashboard: React.FC = () => {
       const res = await fetch(rebalanceUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ positionId, percentage: Number(percentage) })
+        body: JSON.stringify({ percentage: Number(percentage) })
       });
       const data = await res.json();
       if (data.success) {
-        if (data.newTokenId) {
-          const newId = Number(data.newTokenId);
-          setPositionId(newId);
-          localStorage.setItem('activePositionId', newId.toString());
-          setMsg(`¡Rebalanceo exitoso! Nuevo NFT ID: #${newId}`);
-          checkPositionRange(newId); // Verificar el rango del nuevo token inmediatamente
-        } else {
-          setMsg('¡Rebalanceo exitoso! ' + data.message);
-          checkPositionRange(positionId);
+        if (data.positionId) {
+          setPositionId(data.positionId);
+          localStorage.setItem('activePositionId', data.positionId.toString());
         }
+        setMsg('¡Rebalanceo exitoso! Nuevo ID: #' + (data.positionId || ''));
+        checkPositionRange();
       } else {
         setMsg('Error al rebalancear: ' + data.error);
       }
@@ -113,7 +109,6 @@ export const PancakeDashboard: React.FC = () => {
       <h2>PancakeSwap V3 Harvester</h2>
       <p style={{ color: '#94a3b8', fontSize: '14px' }}>Posición ID: #{positionId} (PEPE/BNB)</p>
 
-      {/* Indicador de Estado En Rango / Fuera de Rango */}
       <div style={{ background: '#1e293b', padding: '12px', borderRadius: '8px', margin: '15px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: '13px', color: '#cbd5e1' }}>Estado de la Posición:</span>
         {loadingRange ? (
@@ -125,7 +120,6 @@ export const PancakeDashboard: React.FC = () => {
         )}
       </div>
 
-      {/* Botón de Harvest */}
       <button 
         onClick={handleHarvest} 
         disabled={loadingHarvest}
@@ -134,7 +128,6 @@ export const PancakeDashboard: React.FC = () => {
         {loadingHarvest ? 'Reclamando...' : 'Reclamar Ganancias Ahora'}
       </button>
 
-      {/* Sección para Rebalancear por Porcentaje */}
       <div style={{ background: '#1e293b', padding: '15px', borderRadius: '8px', marginTop: '15px' }}>
         <p style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 'bold', color: '#cbd5e1' }}>Ajustar Rango Automático</p>
         
