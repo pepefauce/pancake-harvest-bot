@@ -14,7 +14,29 @@ interface PositionCard {
 }
 
 export const PancakeDashboard: React.FC = () => {
-  // Lista de IDs guardados (por defecto arranca con el tuyo actual o los que guardes)
+  // --- ESTADO DE AUTENTICACIÓN (CLAVE ÚNICA) ---
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return sessionStorage.getItem('app_authenticated') === 'true';
+  });
+  const [inputPassword, setInputPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+
+  // Contraseña maestra (puedes cambiarla aquí o definir VITE_APP_PASSWORD en Cloudflare)
+  const MASTER_PASSWORD = import.meta.env.VITE_APP_PASSWORD || "123456";
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (inputPassword === MASTER_PASSWORD) {
+      sessionStorage.setItem('app_authenticated', 'true');
+      setIsAuthenticated(true);
+      setAuthError('');
+    } else {
+      setAuthError('Contraseña incorrecta');
+      setInputPassword('');
+    }
+  };
+
+  // Lista de IDs guardados
   const [positionIds, setPositionIds] = useState<string[]>(() => {
     const saved = localStorage.getItem('pancakePositionIds');
     if (saved) {
@@ -33,6 +55,8 @@ export const PancakeDashboard: React.FC = () => {
   const appSecret = import.meta.env.VITE_APP_SECRET || '';
 
   useEffect(() => {
+    if (!isAuthenticated) return;
+    
     // Inicializar datos para cada ID
     const initialData: Record<string, PositionCard> = {};
     positionIds.forEach(id => {
@@ -53,7 +77,7 @@ export const PancakeDashboard: React.FC = () => {
     
     // Cargar datos de todas las posiciones
     positionIds.forEach(id => fetchPositionData(id));
-  }, [positionIds]);
+  }, [positionIds, isAuthenticated]);
 
   const saveAndSyncIds = (newIds: string[]) => {
     setPositionIds(newIds);
@@ -198,9 +222,45 @@ export const PancakeDashboard: React.FC = () => {
     }));
   };
 
+  // --- PANTALLA DE LOGIN SI NO ESTÁ AUTENTICADO ---
+  if (!isAuthenticated) {
+    return (
+      <div style={{ padding: '30px 20px', fontFamily: 'sans-serif', maxWidth: '380px', margin: '60px auto', background: '#0f172a', color: '#fff', borderRadius: '16px', boxShadow: '0 8px 30px rgba(0,0,0,0.6)', border: '1px solid #1e293b', textAlign: 'center' }}>
+        <div style={{ fontSize: '32px', marginBottom: '10px' }}>🔒</div>
+        <h2 style={{ marginBottom: '8px', fontSize: '20px' }}>Acceso Restringido</h2>
+        <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '20px' }}>Introduce la contraseña para entrar al panel</p>
+        
+        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <input 
+            type="password" 
+            placeholder="Contraseña de la app..." 
+            value={inputPassword}
+            onChange={(e) => setInputPassword(e.target.value)}
+            style={{ padding: '12px', background: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px', fontSize: '14px', outline: 'none', textAlign: 'center' }}
+            autoFocus
+          />
+          <button type="submit" style={{ padding: '12px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px' }}>
+            Desbloquear Panel
+          </button>
+          {authError && <p style={{ color: '#fca5a5', fontSize: '12px', margin: '4px 0 0 0' }}>{authError}</p>}
+        </form>
+      </div>
+    );
+  }
+
+  // --- PANEL PRINCIPAL DE POSICIONES ---
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '440px', margin: 'auto', background: '#0f172a', color: '#fff', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
-      <h2>PancakeSwap Multi-Harvester</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+        <h2>PancakeSwap Multi-Harvester</h2>
+        <button 
+          onClick={() => { sessionStorage.removeItem('app_authenticated'); setIsAuthenticated(false); }}
+          style={{ background: 'transparent', border: '1px solid #334155', color: '#94a3b8', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}
+          title="Bloquear sesión"
+        >
+          Bloquear 🔒
+        </button>
+      </div>
       <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '15px' }}>Gestionando hasta 3 posiciones V3 simultáneamente.</p>
 
       {/* Formulario para agregar nuevo ID */}
@@ -298,3 +358,5 @@ export const PancakeDashboard: React.FC = () => {
     </div>
   );
 };
+
+export default PancakeDashboard;
