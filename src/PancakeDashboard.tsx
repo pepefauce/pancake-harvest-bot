@@ -1,195 +1,300 @@
 import React, { useState, useEffect } from 'react';
 
-export const PancakeDashboard: React.FC = () => {
-  const [loadingHarvest, setLoadingHarvest] = useState(false);
-  const [loadingRange, setLoadingRange] = useState(true);
-  const [loadingRebalance, setLoadingRebalance] = useState(false);
-  
-  const [positionId, setPositionId] = useState<string | number>(() => {
-    return localStorage.getItem('activePositionId') || 'Detectando...';
-  });
-  
-  const [rangeData, setRangeData] = useState<{
-    isInRange: boolean;
-    feesUSD: string;
-    tokensOwed0: string;
-    tokensOwed1: string;
-  } | null>(null);
+interface PositionCard {
+  id: string;
+  loadingRange: boolean;
+  loadingHarvest: boolean;
+  loadingRebalance: boolean;
+  isInRange: boolean;
+  feesUSD: string;
+  tokensOwed0: string;
+  tokensOwed1: string;
+  percentage: string;
+  msg: string | null;
+}
 
-  const [percentage, setPercentage] = useState('15');
-  const [msg, setMsg] = useState<string | null>(null);
+export const PancakeDashboard: React.FC = () => {
+  // Lista de IDs guardados (por defecto arranca con el tuyo actual o los que guardes)
+  const [positionIds, setPositionIds] = useState<string[]>(() => {
+    const saved = localStorage.getItem('pancakePositionIds');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { /* fallback */ }
+    }
+    const legacy = localStorage.getItem('activePositionId');
+    return legacy && legacy !== 'Detectando...' ? [legacy] : ['7604930'];
+  });
+
+  const [positionsData, setPositionsData] = useState<Record<string, PositionCard>>({});
+  const [newIdInput, setNewIdInput] = useState('');
 
   const harvestUrl = import.meta.env.VITE_HARVEST_API_URL || 'https://ceirhkdpuzobndgmyrmc.supabase.co/functions/v1/harvest-pancake';
   const rangeUrl = 'https://ceirhkdpuzobndgmyrmc.supabase.co/functions/v1/positionrange';
   const rebalanceUrl = 'https://ceirhkdpuzobndgmyrmc.supabase.co/functions/v1/rebalance-position';
-
-  // 🔑 Llave de seguridad recuperada desde tus variables de entorno de Cloudflare Pages
   const appSecret = import.meta.env.VITE_APP_SECRET || '';
 
   useEffect(() => {
-    checkPositionRange();
-  }, []);
+    // Inicializar datos para cada ID
+    const initialData: Record<string, PositionCard> = {};
+    positionIds.forEach(id => {
+      initialData[id] = {
+        id,
+        loadingRange: true,
+        loadingHarvest: false,
+        loadingRebalance: false,
+        isInRange: true,
+        feesUSD: '0.00',
+        tokensOwed0: '0',
+        tokensOwed1: '0',
+        percentage: '15',
+        msg: null,
+      };
+    });
+    setPositionsData(initialData);
+    
+    // Cargar datos de todas las posiciones
+    positionIds.forEach(id => fetchPositionData(id));
+  }, [positionIds]);
 
-  const checkPositionRange = async () => {
-    setLoadingRange(true);
+  const saveAndSyncIds = (newIds: string[]) => {
+    setPositionIds(newIds);
+    localStorage.setItem('pancakePositionIds', JSON.stringify(newIds));
+  };
+
+  const handleAddPosition = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanId = newIdInput.trim();
+    if (!cleanId || positionIds.includes(cleanId)) return;
+    if (positionIds.length >= 3) {
+      alert('Máximo 3 posiciones recomendadas para esta vista.');
+      return;
+    }
+    const updated = [...positionIds, cleanId];
+    saveAndSyncIds(updated);
+    setNewIdInput('');
+  };
+
+  const handleRemovePosition = (idToRemove: string) => {
+    const updated = positionIds.filter(id => id !== idToRemove);
+    saveAndSyncIds(updated);
+  };
+
+  const fetchPositionData = async (id: string) => {
+    setPositionsData(prev => ({
+      ...prev,
+      [id]: { ...(prev[id] || { id, percentage: '15' }), loadingRange: true }
+    }));
+
     try {
-      const currentSavedId = localStorage.getItem('activePositionId');
-      const queryUrl = currentSavedId && currentSavedId !== 'Detectando...' 
-        ? `${rangeUrl}?positionId=${currentSavedId}` 
-        : rangeUrl;
-
-      const res = await fetch(queryUrl, {
+      const res = await fetch(`${rangeUrl}?positionId=${id}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${appSecret}` // 👈 Agregado aquí
+          'Authorization': `Bearer ${appSecret}`
         }
       });
       const data = await res.json();
-      if (data.success) {
-        if (data.positionId) {
-          setPositionId(data.positionId);
-          localStorage.setItem('activePositionId', data.positionId.toString());
+      
+      setPositionsData(prev => ({
+        ...prev,
+        [id]: {
+          ...(prev[id] || { percentage: '15' }),
+          id,
+          loadingRange: false,
+          isInRange: data.success ? data.isInRange : true,
+          feesUSD: data.success ? (data.feesUSD || '0.00') : '0.00',
+          tokensOwed0: data.success ? (data.tokensOwed0 || '0') : '0',
+          tokensOwed1: data.success ? (data.tokensOwed1 || '0') : '0',
         }
-        setRangeData({
-          isInRange: data.isInRange,
-          feesUSD: data.feesUSD || '0.00',
-          tokensOwed0: data.tokensOwed0 || '0',
-          tokensOwed1: data.tokensOwed1 || '0',
-        });
-      }
+      }));
     } catch (e) {
-      console.error('Error al verificar rango:', e);
-    } finally {
-      setLoadingRange(false);
+      console.error(`Error al verificar posición ${id}:`, e);
+      setPositionsData(prev => ({
+        ...prev,
+        [id]: { ...(prev[id] || { percentage: '15' }), loadingRange: false }
+      }));
     }
   };
 
-  const handleHarvest = async () => {
-    setLoadingHarvest(true);
-    setMsg(null);
+  const handleHarvest = async (id: string) => {
+    setPositionsData(prev => ({
+      ...prev,
+      [id]: { ...prev[id], loadingHarvest: true, msg: null }
+    }));
+
     try {
       const res = await fetch(harvestUrl, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${appSecret}` // 👈 Agregado aquí
+          'Authorization': `Bearer ${appSecret}` 
         },
-        body: JSON.stringify({ positionId: positionId !== 'Detectando...' ? Number(positionId) : undefined })
+        body: JSON.stringify({ positionId: Number(id) })
       });
       const data = await res.json();
-      if (data.success) {
-        setMsg(data.txHash ? '¡Reclamo exitoso! Tx: ' + data.txHash : 'Proceso completado sin transacciones pendientes.');
-        checkPositionRange(); // Actualizar ganancias tras reclamar
-      } else {
-        setMsg('Error: ' + data.error);
-      }
+      
+      setPositionsData(prev => ({
+        ...prev,
+        [id]: {
+          ...prev[id],
+          loadingHarvest: false,
+          msg: data.success 
+            ? (data.txHash ? '¡Reclamo exitoso! Tx: ' + data.txHash : 'Proceso completado sin tx pendientes.')
+            : 'Error: ' + data.error
+        }
+      }));
+      if (data.success) fetchPositionData(id);
     } catch (e: any) {
-      setMsg('Error de red: ' + e.message);
-    } finally {
-      setLoadingHarvest(false);
+      setPositionsData(prev => ({
+        ...prev,
+        [id]: { ...prev[id], loadingHarvest: false, msg: 'Error de red: ' + e.message }
+      }));
     }
   };
 
-  const handleRebalance = async () => {
-    if (!percentage || Number(percentage) <= 0) {
-      setMsg('Por favor ingresa un porcentaje válido (ej. 15).');
+  const handleRebalance = async (id: string) => {
+    const pos = positionsData[id];
+    if (!pos || !pos.percentage || Number(pos.percentage) <= 0) {
+      alert('Ingresa un porcentaje válido.');
       return;
     }
 
-    setLoadingRebalance(true);
-    setMsg(null);
+    setPositionsData(prev => ({
+      ...prev,
+      [id]: { ...prev[id], loadingRebalance: true, msg: null }
+    }));
+
     try {
       const res = await fetch(rebalanceUrl, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${appSecret}` // 👈 Agregado aquí
+          'Authorization': `Bearer ${appSecret}` 
         },
-        body: JSON.stringify({ percentage: Number(percentage) })
+        body: JSON.stringify({ positionId: Number(id), percentage: Number(pos.percentage) })
       });
       const data = await res.json();
-      if (data.success) {
-        if (data.positionId) {
-          setPositionId(data.positionId);
-          localStorage.setItem('activePositionId', data.positionId.toString());
+      
+      setPositionsData(prev => ({
+        ...prev,
+        [id]: {
+          ...prev[id],
+          loadingRebalance: false,
+          msg: data.success ? '¡Rebalanceo exitoso!' : 'Error al rebalancear: ' + data.error
         }
-        setMsg('¡Rebalanceo exitoso! Nuevo ID: #' + (data.positionId || ''));
-        checkPositionRange();
-      } else {
-        setMsg('Error al rebalancear: ' + data.error);
-      }
+      }));
+      if (data.success) fetchPositionData(id);
     } catch (e: any) {
-      setMsg('Error de red: ' + e.message);
-    } finally {
-      setLoadingRebalance(false);
+      setPositionsData(prev => ({
+        ...prev,
+        [id]: { ...prev[id], loadingRebalance: false, msg: 'Error de red: ' + e.message }
+      }));
     }
   };
 
+  const updatePercentage = (id: string, val: string) => {
+    setPositionsData(prev => ({
+      ...prev,
+      [id]: { ...prev[id], percentage: val }
+    }));
+  };
+
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '400px', margin: 'auto', background: '#0f172a', color: '#fff', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
-      <h2>PancakeSwap V3 Harvester</h2>
-      <p style={{ color: '#94a3b8', fontSize: '14px' }}>Posición ID: #{positionId} (PEPE/WBNB)</p>
+    <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '440px', margin: 'auto', background: '#0f172a', color: '#fff', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
+      <h2>PancakeSwap Multi-Harvester</h2>
+      <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '15px' }}>Gestionando hasta 3 posiciones V3 simultáneamente.</p>
 
-      {/* Estado de la Posición */}
-      <div style={{ background: '#1e293b', padding: '12px', borderRadius: '8px', margin: '15px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: '13px', color: '#cbd5e1' }}>Estado de la Posición:</span>
-        {loadingRange ? (
-          <span style={{ fontSize: '13px', color: '#f97316' }}>Verificando...</span>
-        ) : rangeData?.isInRange ? (
-          <span style={{ background: '#065f46', color: '#34d399', padding: '4px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold' }}>🟢 En Rango</span>
-        ) : (
-          <span style={{ background: '#7f1d1d', color: '#fca5a5', padding: '4px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold' }}>🔴 Fuera de Rango</span>
-        )}
-      </div>
-
-      {/* Ganancias Pendientes en USD */}
-      <div style={{ background: '#1e293b', padding: '15px', borderRadius: '8px', marginBottom: '15px', border: '1px solid #334155' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '13px', color: '#94a3b8' }}>Ganancias Acumuladas:</span>
-          {loadingRange ? (
-            <span style={{ fontSize: '13px', color: '#f97316' }}>Calculando...</span>
-          ) : (
-            <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#34d399' }}>${rangeData?.feesUSD || '0.00'} USD</span>
-          )}
-        </div>
-        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', textAlign: 'right' }}>
-          PEPE: {rangeData?.tokensOwed0 || '0'} | WBNB: {rangeData?.tokensOwed1 || '0'}
-        </div>
-      </div>
-
-      <button 
-        onClick={handleHarvest} 
-        disabled={loadingHarvest}
-        style={{ width: '100%', padding: '12px', background: '#f97316', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', marginBottom: '15px', cursor: 'pointer', opacity: loadingHarvest ? 0.7 : 1 }}
-      >
-        {loadingHarvest ? 'Reclamando...' : 'Reclamar Ganancias Ahora'}
-      </button>
-
-      <div style={{ background: '#1e293b', padding: '15px', borderRadius: '8px', marginTop: '15px' }}>
-        <p style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 'bold', color: '#cbd5e1' }}>Ajustar Rango Automático</p>
-        
-        <div style={{ marginBottom: '12px' }}>
-          <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block' }}>Margen de Rango (± %):</label>
+      {/* Formulario para agregar nuevo ID */}
+      {positionIds.length < 3 && (
+        <form onSubmit={handleAddPosition} style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
           <input 
-            type="number" 
-            placeholder="Ej. 15" 
-            value={percentage} 
-            onChange={(e) => setPercentage(e.target.value)}
-            style={{ width: '100%', padding: '8px', background: '#0f172a', border: '1px solid #334155', color: '#fff', borderRadius: '6px', boxSizing: 'border-box' }}
+            type="text" 
+            placeholder="Añadir nuevo Position ID..." 
+            value={newIdInput}
+            onChange={(e) => setNewIdInput(e.target.value)}
+            style={{ flex: 1, padding: '8px 10px', background: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '6px', fontSize: '13px' }}
           />
-        </div>
-
-        <button 
-            onClick={handleRebalance} 
-            disabled={loadingRebalance}
-            style={{ width: '100%', padding: '10px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', opacity: loadingRebalance ? 0.7 : 1 }}
-          >
-            {loadingRebalance ? 'Rebalanceando...' : 'Rebalancear Posición'}
+          <button type="submit" style={{ padding: '8px 14px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>
+            + Añadir
           </button>
-      </div>
+        </form>
+      )}
 
-      {msg && <p style={{ marginTop: '15px', fontSize: '13px', wordBreak: 'break-all', background: '#1e293b', padding: '10px', borderRadius: '6px' }}>{msg}</p>}
+      {/* Iterar sobre cada posición */}
+      {positionIds.map((id) => {
+        const pos = positionsData[id] || {
+          id, loadingRange: true, loadingHarvest: false, loadingRebalance: false,
+          isInRange: true, feesUSD: '0.00', tokensOwed0: '0', tokensOwed1: '0', percentage: '15', msg: null
+        };
+
+        return (
+          <div key={id} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '10px', padding: '15px', marginBottom: '20px' }}>
+            
+            {/* Cabecera de la tarjeta */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid #334155', paddingBottom: '8px' }}>
+              <span style={{ fontWeight: 'bold', color: '#38bdf8', fontSize: '15px' }}>ID: #{id}</span>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {pos.loadingRange ? (
+                  <span style={{ fontSize: '12px', color: '#f97316' }}>Cargando...</span>
+                ) : pos.isInRange ? (
+                  <span style={{ background: '#065f46', color: '#34d399', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>🟢 En Rango</span>
+                ) : (
+                  <span style={{ background: '#7f1d1d', color: '#fca5a5', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>🔴 Fuera</span>
+                )}
+                <button 
+                  onClick={() => handleRemovePosition(id)} 
+                  title="Eliminar posición"
+                  style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Ganancias */}
+            <div style={{ background: '#0f172a', padding: '10px', borderRadius: '8px', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>Ganancias Acumuladas:</span>
+                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#34d399' }}>${pos.feesUSD} USD</span>
+              </div>
+              <div style={{ fontSize: '10px', color: '#64748b', marginTop: '4px', textAlign: 'right' }}>
+                PEPE: {pos.tokensOwed0} | WBNB: {pos.tokensOwed1}
+              </div>
+            </div>
+
+            {/* Botón Reclamar */}
+            <button 
+              onClick={() => handleHarvest(id)} 
+              disabled={pos.loadingHarvest}
+              style={{ width: '100%', padding: '10px', background: '#f97316', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', marginBottom: '12px', cursor: 'pointer', opacity: pos.loadingHarvest ? 0.7 : 1, fontSize: '13px' }}
+            >
+              {pos.loadingHarvest ? 'Reclamando...' : 'Reclamar Ganancias'}
+            </button>
+
+            {/* Ajuste de Rango */}
+            <div style={{ background: '#0f172a', padding: '10px', borderRadius: '8px' }}>
+              <p style={{ margin: '0 0 6px 0', fontSize: '12px', fontWeight: 'bold', color: '#cbd5e1' }}>Rebalancear Automático</p>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input 
+                  type="number" 
+                  value={pos.percentage} 
+                  onChange={(e) => updatePercentage(id, e.target.value)}
+                  style={{ width: '70px', padding: '6px', background: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '6px', fontSize: '12px', textAlign: 'center' }}
+                />
+                <button 
+                  onClick={() => handleRebalance(id)} 
+                  disabled={pos.loadingRebalance}
+                  style={{ flex: 1, padding: '6px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', opacity: pos.loadingRebalance ? 0.7 : 1, fontSize: '12px' }}
+                >
+                  {pos.loadingRebalance ? 'Rebalanceando...' : 'Aplicar Rango'}
+                </button>
+              </div>
+            </div>
+
+            {pos.msg && <p style={{ marginTop: '10px', fontSize: '12px', wordBreak: 'break-all', background: '#0f172a', padding: '8px', borderRadius: '6px', color: '#cbd5e1' }}>{pos.msg}</p>}
+
+          </div>
+        );
+      })}
     </div>
   );
 };
